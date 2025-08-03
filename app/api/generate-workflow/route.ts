@@ -1,3 +1,4 @@
+console.log('SUPABASE_URL AT BUILD TIME:', process.env.SUPABASE_URL);
 import { type NextRequest, NextResponse } from "next/server"
 import { auth } from "@clerk/nextjs/server"
 import { generateText } from "ai"
