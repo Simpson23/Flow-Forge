@@ -1,5 +1,6 @@
 {
   "compilerOptions": {
+    "baseUrl": ".", // ✅ Add this line
     "lib": ["dom", "dom.iterable", "esnext"],
     "allowJs": true,
     "target": "ES6",
@@ -21,7 +22,5 @@
     "paths": {
       "@/*": ["./*"]
     }
-  },
-  "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
-  "exclude": ["node_modules"]
+  }
 }

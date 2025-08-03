@@ -1,14 +1,15 @@
-import { auth } from "@clerk/nextjs/server"
-import { redirect } from "next/navigation"
-import { WorkflowGenerator } from "@/components/workflow-generator"
-import { WorkflowHistory } from "@/components/workflow-history"
-import { UsageTracker } from "@/components/usage-tracker"
+import { auth } from "@clerk/nextjs/server";
+import { redirect } from "next/navigation";
+import { WorkflowGenerator } from "@/components/workflow-generator";
+import { WorkflowHistory } from "@/components/workflow-history";
+import { UsageTracker } from "@/components/usage-tracker";
+import { TestCheckout } from "@/components/TestCheckout"; // 👈 Step 3: import added here
 
 export default async function DashboardPage() {
-  const { userId } = await auth()
+  const { userId } = await auth();
 
   if (!userId) {
-    redirect("/sign-in")
+    redirect("/sign-in");
   }
 
   return (
@@ -22,8 +23,9 @@ export default async function DashboardPage() {
         </div>
 
         <div className="grid lg:grid-cols-3 gap-8">
-          <div className="lg:col-span-2">
+          <div className="lg:col-span-2 space-y-8">
             <WorkflowGenerator userId={userId} />
+            <TestCheckout /> {/* 👈 Step 3: usage added here */}
           </div>
 
           <div className="space-y-6">
@@ -33,5 +35,5 @@ export default async function DashboardPage() {
         </div>
       </div>
     </div>
-  )
+  );
 }

@@ -1,64 +1,59 @@
-import { type NextRequest, NextResponse } from "next/server"
-import { headers } from "next/headers"
-import Stripe from "stripe"
-import { createClient } from "@supabase/supabase-js"
+import { headers } from 'next/headers';
+import { NextResponse } from 'next/server';
+import Stripe from 'stripe';
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-  apiVersion: "2024-06-20",
-})
+import { db } from '@/lib/db';
+import { users } from '@/lib/db/schema';
+// Ensure users table schema includes stripeCustomerId, stripeSubscriptionId, and stripePriceId fields
+import { eq } from 'drizzle-orm';
+import { stripe } from '@/lib/db/stripe';
+import { sendWelcomeEmail } from '@/lib/email/sendWelcomeEmail';
+import { cancelUserWorkflows } from '@/lib/email/cancelUserWorkflows';
 
-const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
+export async function POST(req: Request) {
+  const body = await req.text();
+  const signature = (await headers()).get('stripe-signature') as string;
 
-const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET!
+  let event: Stripe.Event;
 
-export async function POST(request: NextRequest) {
   try {
-    const body = await request.text()
-    const headersList = await headers()
-    const signature = headersList.get("stripe-signature")!
-
-    let event: Stripe.Event
-
-    try {
-      event = stripe.webhooks.constructEvent(body, signature, webhookSecret)
-    } catch (err) {
-      console.error("Webhook signature verification failed:", err)
-      return NextResponse.json({ error: "Invalid signature" }, { status: 400 })
-    }
-
-    switch (event.type) {
-      case "checkout.session.completed":
-        const session = event.data.object as Stripe.Checkout.Session
-        const userId = session.client_reference_id
-
-        if (userId && session.subscription) {
-          await supabase.from("user_usage").upsert({
-            user_id: userId,
-            is_pro: true,
-            stripe_customer_id: session.customer as string,
-            stripe_subscription_id: session.subscription as string,
-            updated_at: new Date().toISOString(),
-          })
-        }
-        break
-
-      case "customer.subscription.deleted":
-        const subscription = event.data.object as Stripe.Subscription
-
-        await supabase
-          .from("user_usage")
-          .update({
-            is_pro: false,
-            stripe_subscription_id: null,
-            updated_at: new Date().toISOString(),
-          })
-          .eq("stripe_subscription_id", subscription.id)
-        break
-    }
-
-    return NextResponse.json({ received: true })
+    event = stripe.webhooks.constructEvent(body, signature, process.env.STRIPE_WEBHOOK_SECRET!);
   } catch (error) {
-    console.error("Webhook error:", error)
-    return NextResponse.json({ error: "Webhook handler failed" }, { status: 500 })
+    return new NextResponse(`Webhook Error: ${(error as Error).message}`, { status: 400 });
   }
+
+  const session = event.data.object as Stripe.Checkout.Session;
+
+  switch (event.type) {
+    case 'checkout.session.completed': {
+      const subscriptionId = session.subscription as string;
+      const customerId = session.customer as string;
+
+      await db.update(users)
+        .set({
+          stripeCustomerId: customerId,
+          stripeSubscriptionId: subscriptionId,
+          stripePriceId: session.metadata?.priceId,
+        })
+        .where(eq(users.id, customerId));
+
+
+      // ✅ Call welcome email function
+      await sendWelcomeEmail(session.metadata?.userId!);
+      break;
+    }
+
+    case 'customer.subscription.deleted': {
+      const customerId = session.customer as string;
+
+      // ✅ Cancel user workflows
+      await cancelUserWorkflows(customerId);
+      break;
+    }
+
+    default:
+      console.log(`Unhandled event type ${event.type}`);
+  }
+
+  return new NextResponse(null, { status: 200 });
 }
